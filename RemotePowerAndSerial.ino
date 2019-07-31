@@ -6,11 +6,21 @@
 const char* ssid = "Your SSID goes here";
 const char* password = "Your WiFi pass goes here";
 
-ESP8266WebServer server(80);
+// how many clients should be able to telnet to this ESP8266
+#define MAX_SRV_CLIENTS 1
 
+// Remote-serial related globals
+
+WiFiServer serverSerial(2345);
+WiFiClient serverClients[MAX_SRV_CLIENTS];
+
+// Web-server related globals
+
+ESP8266WebServer serverWeb(80);
 const int controlPin = 0;
-
 bool poweredUp = false;
+
+// Web-server callbacks
 
 void handleRoot()
 {
@@ -24,61 +34,79 @@ void handleRoot()
         response += "<p>Click <a href=\"/poweroff\">here</a> to power off";
     } 
     response += "</div>";
-    server.send(200, "text/html", response);
+    serverWeb.send(200, "text/html", response);
 }
 
 void handleNotFound()
 {
     String message = "File Not Found\n\n";
     message += "URI: ";
-    message += server.uri();
+    message += serverWeb.uri();
     message += "\nMethod: ";
-    message += (server.method() == HTTP_GET)?"GET":"POST";
+    message += (serverWeb.method() == HTTP_GET)?"GET":"POST";
     message += "\nArguments: ";
-    message += server.args();
+    message += serverWeb.args();
     message += "\n";
-    for (uint8_t i=0; i<server.args(); i++){
-        message += " " + server.argName(i) + ": " + server.arg(i) + "\n";
+    for (uint8_t i=0; i<serverWeb.args(); i++){
+        message += " " + serverWeb.argName(i) + ": " + serverWeb.arg(i) + "\n";
     }
-    server.send(404, "text/plain", message);
+    serverWeb.send(404, "text/plain", message);
 }
 
-void setup(void){
+void setupCommon()
+{
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid, password);
+    Serial1.print("\nConnecting to "); Serial1.println(ssid);
+    uint8_t i = 0;
+    while (WiFi.status() != WL_CONNECTED && i++ < 20) delay(500);
+    if(i == 21) {
+        Serial1.print("Could not connect to"); Serial1.println(ssid);
+        while(1)
+            delay(500);
+    }
+    Serial1.begin(115200);
+    Serial1.print("Connected to ");
+    Serial1.println(ssid);
+    Serial1.print("IP address: ");
+    Serial1.println(WiFi.localIP());
+}
+
+void setupRemoteSerial()
+{
+    // Remote serial
+    Serial.begin(115200);
+    serverSerial.begin();
+    serverSerial.setNoDelay(true);
+
+    Serial1.print("Ready! Use 'telnet ");
+    Serial1.print(WiFi.localIP());
+    Serial1.println(" 2345' to connect");
+}
+
+void setupWebServer(void)
+{
     pinMode(controlPin, OUTPUT);
     digitalWrite(controlPin, 0);
-    Serial.begin(9600);
-    WiFi.begin(ssid, password);
-    Serial.println("");
-  
-    // Wait for connection
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
-    Serial.println("");
-    Serial.print("Connected to ");
-    Serial.println(ssid);
-    Serial.print("IP address: ");
-    Serial.println(WiFi.localIP());
   
     if (MDNS.begin("esp8266")) {
         Serial.println("MDNS responder started");
     }
   
-    server.on("/", handleRoot);
+    serverWeb.on("/", handleRoot);
   
     auto redirect = []() {
-        server.sendHeader("Location", String("http://") + WiFi.localIP() + String("/"), true);
-        server.send(302, "text/plain", "");  
+        serverWeb.sendHeader("Location", String("http://") + WiFi.localIP() + String("/"), true);
+        serverWeb.send(302, "text/plain", "");  
     };
-    server.on("/poweron", [&]() {
+    serverWeb.on("/poweron", [&]() {
         if (!poweredUp) {
             poweredUp = true;
             digitalWrite(controlPin, 1);
         }
         redirect();
     });
-    server.on("/poweroff", [&]() {
+    serverWeb.on("/poweroff", [&]() {
         if (poweredUp) {
             poweredUp = false;
             digitalWrite(controlPin, 0);
@@ -86,13 +114,63 @@ void setup(void){
         redirect();
     });
   
-    server.onNotFound(handleNotFound);
+    serverWeb.onNotFound(handleNotFound);
   
-    server.begin();
+    serverWeb.begin();
     Serial.println("HTTP server started");
 }
 
-void loop(void)
+void setup()
 {
-    server.handleClient();
+    setupCommon();
+    setupWebServer();
+    setupRemoteSerial();
+}
+
+void loop()
+{
+    uint8_t i;
+
+    // check if there are any new clients
+    if (serverSerial.hasClient()) {
+        for(i = 0; i < MAX_SRV_CLIENTS; i++) {
+            // find free/disconnected spot
+            if (!serverClients[i] || !serverClients[i].connected()) {
+                if(serverClients[i]) serverClients[i].stop();
+                serverClients[i] = serverSerial.available();
+                Serial1.print("New client: "); Serial1.print(i);
+                break;
+            }
+        }
+        // no free/disconnected spot so reject
+        if ( i == MAX_SRV_CLIENTS) {
+            WiFiClient serverClient = serverSerial.available();
+            serverClient.stop();
+            Serial1.println("Connection rejected ");
+        }
+    }
+    // check clients for data
+    for(i = 0; i < MAX_SRV_CLIENTS; i++) {
+        if (serverClients[i] && serverClients[i].connected()) {
+            if(serverClients[i].available()) {
+                // get data from the telnet client and push it to the UART
+                while(serverClients[i].available()) Serial.write(serverClients[i].read());
+            }
+        }
+    }
+    // check UART for data
+    if(Serial.available()) {
+        size_t len = Serial.available();
+        uint8_t sbuf[len];
+        Serial.readBytes(sbuf, len);
+        // push UART data to all connected telnet clients
+        for(i = 0; i < MAX_SRV_CLIENTS; i++) {
+            if (serverClients[i] && serverClients[i].connected()) {
+                serverClients[i].write(sbuf, len);
+                delay(1);
+            }
+        }
+    }
+
+    serverWeb.handleClient();
 }
