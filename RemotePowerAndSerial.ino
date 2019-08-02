@@ -1,3 +1,28 @@
+/****************************************************************************
+  This code merges functionality from two ESP8266 examples.
+  The remote-serial-over-netcat one is by far the most complex,
+  and is originally called:
+
+      WiFiTelnetToSerial
+      Example Transparent UART to Telnet Server for esp8266
+
+      Copyright (c) 2015 Hristo Gochkov. All rights reserved.
+      This file is part of the ESP8266WiFi library for Arduino environment.
+
+  The other example is the simple Web server.  Both of these are originally
+  licensed as LGPL - so this simple amalgamation of the two also follows the
+  LGPL.
+
+  The crude surgery to build this Frankenstein-y thing, was performed by
+  Thanassis Tsiodras, in late July 2019.  The details of the HW that this was
+  used for are detailed in his blog post here:
+
+     https://www.thanassis.space/remoteserial.html
+
+  containing with pictures and videos of the HW and SW in action, remotely
+  commanding an AtomicPI Single Board Computer.
+***************************************************************************/
+
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 #include <ESP8266WebServer.h>
@@ -53,7 +78,7 @@ void handleNotFound()
     serverWeb.send(404, "text/plain", message);
 }
 
-void setupCommon()
+void setupWifi()
 {
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
@@ -122,7 +147,11 @@ void setupWebServer(void)
 
 void setup()
 {
-    setupCommon();
+    // As soon as possible, close the relay!
+    pinMode(controlPin, OUTPUT);
+    digitalWrite(controlPin, 0);
+  
+    setupWifi();
     setupWebServer();
     setupRemoteSerial();
 }
