@@ -15,12 +15,13 @@
 
   The crude surgery to build this Frankenstein-y thing, was performed by
   Thanassis Tsiodras, in late July 2019.  The details of the HW that this was
-  used for are detailed in his blog post here:
+  used for are documented in his blog post here:
 
      https://www.thanassis.space/remoteserial.html
 
-  containing with pictures and videos of the HW and SW in action, remotely
-  commanding an AtomicPI Single Board Computer.
+  ...containing pictures and videos of the HW and SW in action; remotely
+  commanding an AtomicPI Single Board Computer, from power on, to BIOS,
+  to a remote install of OpenBSD on a USB stick.
 ***************************************************************************/
 
 #include <ESP8266WiFi.h>
