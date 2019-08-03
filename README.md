@@ -1,12 +1,12 @@
 
+**NOTE**: [I wrote a detailed blog post about this, go read it](https://www.thanassis.space/remotepower.html).
+
 This code allows me to use a dirt-cheap ESP8266/relay module
 to remotely control my AtomicPI - as in:
 
 - remote power on/off
 - remote serial port, allowing me to fully control its boot process
   (and BIOS)
-
-I wrote a detailed blog post about this [here](https://www.thanassis.space/remotepower.html).
 
 Here are some teaser photos:
 
